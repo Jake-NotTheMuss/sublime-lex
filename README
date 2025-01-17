@@ -1,0 +1,5 @@
+Lex sublime syntax.
+
+If you want .l files to be matched as Lex before Lisp, install the Lex
+directory under a name that comes after Lisp alphabetically, such as
+ZLex.

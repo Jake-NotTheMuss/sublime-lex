@@ -1,0 +1,162 @@
+%YAML 1.2
+---
+# Copyright (c) 2018-2022, John Gardner
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+# Rewrite of https://github.com/Alhadis/language-grammars/blob/master/grammars/lex.cson
+# for sublime-syntax
+# http://www.sublimetext.com/docs/3/syntax.html
+
+name: Lex
+scope: source.lex
+file_extensions: [l, ll, lpp, lex, flex]
+first_line_match: |-
+  (?x:
+    # Emacs modeline
+    -\*-(?i:[ \t]*(?=[^:;\s]+[ \t]*-\*-)|(?:.*?[ \t;]|(?<=-\*-))[ \t]*mode[ \t]*:[ \t]*)
+      (?i:f?lex)
+    (?=[ \t;]|(?<![-*])-\*-).*?-\*-
+    |
+    # Vim modeline
+    (?:(?:^|[ \t])(?:vi|Vi(?=m))(?:m[<=>]?[0-9]+|m)?|[ \t]ex)(?=:(?=[ \t]*set?[ \t][^\r\n:]+:)|:(?![ \t]*set?[ \t]))
+    (?:(?:[ \t]*:[ \t]*|[ \t])\w*(?:[ \t]*=(?:[^\\\s]|\\.)*)?)*[ \t:]
+    (?:filetype|ft|syntax)[ \t]*=
+      (?i:f?lex)
+    (?=$|\s|:)
+  )
+
+contexts:
+  main:
+    - include: comments
+    - include: definitions
+    - include: rules
+    - include: scope:source.c++
+
+  comments:
+    - match: /\*
+      scope: punctuation.definition.begin.comment.lex
+      push:
+        - meta_scope: comment.block.lex
+        - match: \*/
+          scope: punctuation.definition.end.comment.lex
+          pop: 1
+    - match: //
+      scope: punctuation.definition.comment.lex
+      push:
+        - meta_scope: comment.line.double-slash.lex
+        - match: (?=$)
+          pop: 1
+
+  # Initial grammar section
+  definitions:
+    - match: \A(?!\s*%%)
+      push:
+        - meta_scope: meta.definitions.lex
+        - match: ^(?=\s*(?:%%|(?:package|import)\s+\w))
+          pop: 1
+        - include: comments
+        - include: directives
+        - include: passthrough
+        - include: definition
+
+  # Individual definition
+  definition:
+    - match: ^\s*([A-Za-z_][A-Za-z0-9_-]*)
+      captures:
+        1: entity.name.definition.lex
+      push:
+        - meta_scope: meta.definition.lex
+        - match: $
+          pop: 1
+        - include: scope:source.lex.regexp
+
+  # Hack for JFlex grammars (Java-flavoured Lex)
+  jflex:
+    - match: ''
+
+  # Directives of the form `%option', etc
+  directives:
+    - match: ^\s*((%)\w+)(?=\s|$)
+      captures:
+        1: keyword.control.directive.lex
+        2: punctuation.definition.directive.lex
+      push:
+        - meta_scope: meta.directive.lex
+        - match: (?=$)
+          pop: 1
+        - include: comments
+        - match: '='
+          scope: keyword.operator.assignment.lex
+        - include: scope:source.lex.regexp#string
+        - match: \S+
+          scope: constant.language.other.lex
+
+  # Chunk of text copied verbatim to output
+  passthrough:
+    - match: ^%\{
+      scope: punctuation.section.embedded.begin.lex
+      embed: scope:source.c++
+      embed_scope: source.c++
+      escape: ^%\}
+      escape_captures:
+        0: punctuation.section.embedded.end.lex
+
+  # Second grammar section
+  rules:
+    - match: ^\s*(%%)\s*(?:$\s*|(?=/\*))
+      captures:
+        1: keyword.control.section.begin.lex
+      push:
+        - meta_scope: meta.rules.lex
+        - match: ^\s*(%%)\s*(?:$\s*|(?=/\*))
+          captures:
+            1: keyword.control.section.end.lex
+          set: user-code
+        - include: passthrough
+        - include: rule-pattern
+        - include: rule-action
+
+  rule-pattern:
+    - match: (?<=^|\n)(?=\S)
+      push:
+        - meta_scope: meta.pattern.lex
+        - match: (?=\s|$)
+          pop: 1
+        - include: scope:source.lex.regexp
+
+  # Wrapper for embedded C/C++ blocks.
+  # Patterns are handled carefully to avoid runaway issues
+  rule-action:
+    - match: (?<!^)(?=\S)
+      push:
+        - meta_scope: meta.action.lex
+        - match: (?=\s*$|^)
+          pop: 1
+        - include: comments
+        - match: (?=\{)
+          push:
+            - meta_content_scope: source.c++
+            - match: (?<=\})
+              pop: 1
+            - include: scope:source.c++
+        # Plain C string (one-line only)
+        - match: (?=[^{\s][^{]*?\s*$)
+          embed: scope:source.c++
+          embed_scope: source.c++
+          escape: (?=$)
+
+  # Arbitrary code tacked onto the end of the grammar
+  user-code:
+    - meta_content_scope: source.c++
+    - include: scope:source.c++
